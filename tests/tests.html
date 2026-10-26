@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>صفحة الاختبارات — مرجع الفيزياء والكهرباء</title>
+  <style>
+    :root {
+      --bg: #f6f4ee;
+      --card-bg: #ffffff;
+      --text: #1c1b19;
+      --text-muted: #5c5955;
+      --border: #dcd8cf;
+      --primary: #1e3a5f;
+      --pass-bg: #e6f4ea;
+      --pass-text: #137333;
+      --pass-border: #ceead6;
+      --fail-bg: #fce8e6;
+      --fail-text: #c5221f;
+      --fail-border: #fad2cf;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    header {
+      margin-bottom: 24px;
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 16px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+    .summary-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .summary-text {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .summary-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 2px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .badge-pass {
+      background: var(--pass-bg);
+      color: var(--pass-text);
+      border: 1px solid var(--pass-border);
+    }
+    .badge-fail {
+      background: var(--fail-bg);
+      color: var(--fail-text);
+      border: 1px solid var(--fail-border);
+    }
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--primary);
+      margin: 20px 0 10px 0;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      margin-bottom: 16px;
+      font-size: 0.88rem;
+    }
+    th, td {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      text-align: right;
+    }
+    [dir="ltr"] th, [dir="ltr"] td {
+      text-align: left;
+    }
+    th {
+      background: #eae6dc;
+      font-weight: 600;
+    }
+    .ltr {
+      direction: ltr;
+      unicode-bidi: embed;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      border-radius: 2px;
+    }
+    .status-pass {
+      background: var(--pass-bg);
+      color: var(--pass-text);
+    }
+    .status-fail {
+      background: var(--fail-bg);
+      color: var(--fail-text);
+    }
+    .footer-summary {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 16px;
+      margin-top: 24px;
+      text-align: center;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>اختبارات الدقة والتوافق (tests.html)</h1>
+      <p style="color: var(--text-muted); font-size: 0.9rem;">
+        فحص آلي لحالات القسم 3.20 من ملف المواصفات. الفرق المسموح 1e-9 نسبياً.
+      </p>
+    </header>
+
+    <div id="top-summary" class="summary-card">
+      <div class="summary-text">جاري تشغيل الاختبارات...</div>
+    </div>
+
+    <div id="test-results"></div>
+
+    <div id="bottom-summary" class="footer-summary"></div>
+  </div>
+
+  <!-- Data files -->
+  <script src="../data/prefixes.js"></script>
+  <script src="../data/units.js"></script>
+  <script src="../data/resistor-data.js"></script>
+  <script src="../data/constants.js"></script>
+  <script src="../data/formulas.js"></script>
+  <script src="../data/symbols.js"></script>
+  <script src="../data/i18n.js"></script>
+
+  <!-- Core JS -->
+  <script src="../js/format.js"></script>
+  <script src="../js/convert.js"></script>
+  <script src="../js/lib/svg.js"></script>
+
+  <!-- Test Suite Script -->
+  <script>
+    (function() {
+      'use strict';
+
+      var tests = [];
+      var currentCategory = '';
+
+      function setCategory(name) {
+        currentCategory = name;
+      }
+
+      function approxEq(a, b, relTol) {
+        if (typeof relTol === 'undefined') relTol = 1e-9;
+        if (a === b) return true;
+        if (isNaN(a) || isNaN(b)) return false;
+        var diff = Math.abs(a - b);
+        var maxVal = Math.max(Math.abs(a), Math.abs(b));
+        if (maxVal === 0) return diff <= relTol;
+        return (diff / maxVal) <= relTol;
+      }
+
+      function test(name, fn) {
+        try {
+          var res = fn();
+          var passed = res.passed;
+          var expected = res.expected;
+          var actual = res.actual;
+          var note = res.note || '';
+          tests.push({
+            category: currentCategory,
+            name: name,
+            passed: passed,
+            expected: expected,
+            actual: actual,
+            note: note
+          });
+        } catch (e) {
+          tests.push({
+            category: currentCategory,
+            name: name,
+            passed: false,
+            expected: 'No Exception',
+            actual: 'Error: ' + e.message,
+            note: 'Exception thrown'
+          });
+        }
+      }
+
+      // ==========================================
+      // 1. تحويل الوحدات (Unit Conversions)
+      // ==========================================
+      setCategory('1. محول الوحدات (Unit Conversions)');
+
+      test('1 in → mm = 25.4', function() {
+        var r = REF.convert.convertUnits('length', 'in', 'mm', 1);
+        return { passed: approxEq(r.result, 25.4), expected: 25.4, actual: r.result };
+      });
+
+      test('1 mi → km = 1.609344', function() {
+        var r = REF.convert.convertUnits('length', 'mi', 'km', 1);
+        return { passed: approxEq(r.result, 1.609344), expected: 1.609344, actual: r.result };
+      });
+
+      test('1 lb → kg = 0.45359237', function() {
+        var r = REF.convert.convertUnits('mass', 'lb', 'kg', 1);
+        return { passed: approxEq(r.result, 0.45359237), expected: 0.45359237, actual: r.result };
+      });
+
+      test('0 °C → K = 273.15', function() {
+        var r = REF.convert.convertUnits('temperature', 'C', 'K', 0);
+        return { passed: approxEq(r.result, 273.15), expected: 273.15, actual: r.result };
+      });
+
+      test('100 °C → °F = 212', function() {
+        var r = REF.convert.convertUnits('temperature', 'C', 'F', 100);
+        return { passed: approxEq(r.result, 212), expected: 212, actual: r.result };
+      });
+
+      test('−40 °C → °F = −40', function() {
+        var r = REF.convert.convertUnits('temperature', 'C', 'F', -40);
+        return { passed: approxEq(r.result, -40), expected: -40, actual: r.result };
+      });
+
+      test('0 K → °C = −273.15', function() {
+        var r = REF.convert.convertUnits('temperature', 'K', 'C', 0);
+        return { passed: approxEq(r.result, -273.15), expected: -273.15, actual: r.result };
+      });
+
+      test('32 °F → °C = 0', function() {
+        var r = REF.convert.convertUnits('temperature', 'F', 'C', 32);
+        return { passed: approxEq(r.result, 0), expected: 0, actual: r.result };
+      });
+
+      test('1 atm → Pa = 101325', function() {
+        var r = REF.convert.convertUnits('pressure', 'atm', 'Pa', 1);
+        return { passed: approxEq(r.result, 101325), expected: 101325, actual: r.result };
+      });
+
+      test('1 atm → psi ≈ 14.6959488', function() {
+        var r = REF.convert.convertUnits('pressure', 'atm', 'psi', 1);
+        return { passed: approxEq(r.result, 14.6959488, 1e-6), expected: '≈ 14.6959488', actual: r.result };
+      });
+
+      test('1 bar → kPa = 100', function() {
+        var r = REF.convert.convertUnits('pressure', 'bar', 'kPa', 1);
+        return { passed: approxEq(r.result, 100), expected: 100, actual: r.result };
+      });
+
+      test('1 kWh → J = 3 600 000', function() {
+        var r = REF.convert.convertUnits('energy', 'kWh', 'J', 1);
+        return { passed: approxEq(r.result, 3600000), expected: 3600000, actual: r.result };
+      });
+
+      test('1 cal → J = 4.184', function() {
+        var r = REF.convert.convertUnits('energy', 'cal', 'J', 1);
+        return { passed: approxEq(r.result, 4.184), expected: 4.184, actual: r.result };
+      });
+
+      test('1 eV → J = 1.602176634e-19', function() {
+        var r = REF.convert.convertUnits('energy', 'eV', 'J', 1);
+        return { passed: approxEq(r.result, 1.602176634e-19), expected: '1.602176634e-19', actual: r.result };
+      });
+
+      test('1 hp (mech) → W ≈ 745.699872', function() {
+        var r = REF.convert.convertUnits('power', 'hp_mech', 'W', 1);
+        return { passed: approxEq(r.result, 745.699872, 1e-6), expected: '≈ 745.699872', actual: r.result };
+      });
+
+      test('1 US gal → L = 3.785411784', function() {
+        var r = REF.convert.convertUnits('volume', 'usgal', 'L', 1);
+        return { passed: approxEq(r.result, 3.785411784), expected: 3.785411784, actual: r.result };
+      });
+
+      test('60 km/h → m/s ≈ 16.6666667', function() {
+        var r = REF.convert.convertUnits('speed', 'kmh', 'ms', 60);
+        return { passed: approxEq(r.result, 16.6666667, 1e-6), expected: '≈ 16.6666667', actual: r.result };
+      });
+
+      test('1 knot → km/h = 1.852', function() {
+        var r = REF.convert.convertUnits('speed', 'knot', 'kmh', 1);
+        return { passed: approxEq(r.result, 1.852), expected: 1.852, actual: r.result };
+      });
+
+      test('180 deg → rad = π', function() {
+        var r = REF.convert.convertUnits('angle', 'deg', 'rad', 180);
+        return { passed: approxEq(r.result, Math.PI), expected: 'π (' + Math.PI + ')', actual: r.result };
+      });
+
+      test('1 Ah → C = 3600', function() {
+        var r = REF.convert.convertUnits('charge', 'Ah', 'C', 1);
+        return { passed: approxEq(r.result, 3600), expected: 3600, actual: r.result };
+      });
+
+      // ==========================================
+      // 2. المقاومات: ألوان و SMD و سلاسل E
+      // ==========================================
+      setCategory('2. المقاومات (Resistor Codes & Standards)');
+
+      test('مقاومة 4 أشرطة (بني، أسود، أحمر، ذهبي) = 1 kΩ ±5%', function() {
+        var r = REF.convert.colorToResistance(['brown', 'black', 'red', 'gold'], 4);
+        var pass = r && r.value === 1000 && r.tolerance === 5;
+        return { passed: pass, expected: '1000 Ω ±5%', actual: r ? r.value + ' Ω ±' + r.tolerance + '%' : null };
+      });
+
+      test('مقاومة 4 أشرطة (أصفر، بنفسجي، أحمر، ذهبي) = 4.7 kΩ ±5%', function() {
+        var r = REF.convert.colorToResistance(['yellow', 'violet', 'red', 'gold'], 4);
+        var pass = r && r.value === 4700 && r.tolerance === 5;
+        return { passed: pass, expected: '4700 Ω ±5%', actual: r ? r.value + ' Ω ±' + r.tolerance + '%' : null };
+      });
+
+      test('مقاومة 4 أشرطة (أحمر، أحمر، بني، ذهبي) = 220 Ω ±5%', function() {
+        var r = REF.convert.colorToResistance(['red', 'red', 'brown', 'gold'], 4);
+        var pass = r && r.value === 220 && r.tolerance === 5;
+        return { passed: pass, expected: '220 Ω ±5%', actual: r ? r.value + ' Ω ±' + r.tolerance + '%' : null };
+      });
+
+      test('مقاومة 5 أشرطة (بني، أسود، أسود، بني، بني) = 1 kΩ ±1%', function() {
+        var r = REF.convert.colorToResistance(['brown', 'black', 'black', 'brown', 'brown'], 5);
+        var pass = r && r.value === 1000 && r.tolerance === 1;
+        return { passed: pass, expected: '1000 Ω ±1%', actual: r ? r.value + ' Ω ±' + r.tolerance + '%' : null };
+      });
+
+      test('مقاومة 5 أشرطة (أصفر، بنفسجي، أسود، أحمر، بني) = 47 kΩ ±1%', function() {
+        var r = REF.convert.colorToResistance(['yellow', 'violet', 'black', 'red', 'brown'], 5);
+        var pass = r && r.value === 47000 && r.tolerance === 1;
+        return { passed: pass, expected: '47000 Ω ±1%', actual: r ? r.value + ' Ω ±' + r.tolerance + '%' : null };
+      });
+
+      test('كود SMD "472" = 4.7 kΩ', function() {
+        var r = REF.convert.smdToResistance('472');
+        var pass = r && r.value === 4700;
+        return { passed: pass, expected: '4700 Ω', actual: r ? r.value + ' Ω' : null };
+      });
+
+      test('كود SMD "103" = 10 kΩ', function() {
+        var r = REF.convert.smdToResistance('103');
+        var pass = r && r.value === 10000;
+        return { passed: pass, expected: '10000 Ω', actual: r ? r.value + ' Ω' : null };
+      });
+
+      test('كود SMD "4R7" = 4.7 Ω', function() {
+        var r = REF.convert.smdToResistance('4R7');
+        var pass = r && r.value === 4.7;
+        return { passed: pass, expected: '4.7 Ω', actual: r ? r.value + ' Ω' : null };
+      });
+
+      test('كود SMD "1002" = 10 kΩ', function() {
+        var r = REF.convert.smdToResistance('1002');
+        var pass = r && r.value === 10000;
+        return { passed: pass, expected: '10000 Ω', actual: r ? r.value + ' Ω' : null };
+      });
+
+      test('أقرب قيمة معيارية في E24 لـ 4.5 kΩ = 4.3 kΩ', function() {
+        var r = REF.convert.nearestStandard(4500, 'E24');
+        var pass = r && r.value === 4300;
+        return { passed: pass, expected: '4300 Ω', actual: r ? r.value + ' Ω' : null };
+      });
+
+      test('أعداد سلاسل القيم المعيارية: E6 (6)، E12 (12)، E24 (24)، E96 (96)', function() {
+        var c6 = REF.eSeries.E6.length;
+        var c12 = REF.eSeries.E12.length;
+        var c24 = REF.eSeries.E24.length;
+        var c96 = REF.eSeries.E96.length;
+        var pass = (c6 === 6 && c12 === 12 && c24 === 24 && c96 === 96);
+        return {
+          passed: pass,
+          expected: 'E6: 6, E12: 12, E24: 24, E96: 96',
+          actual: 'E6: ' + c6 + ', E12: ' + c12 + ', E24: ' + c24 + ', E96: ' + c96
+        };
+      });
+
+      test('الاتجاه العكسي للألوان: 4.7 kΩ ±5% → [yellow, violet, red, gold]', function() {
+        var colors = REF.convert.resistanceToColors(4700, 5, 4);
+        var expected = ['yellow', 'violet', 'red', 'gold'];
+        var pass = colors && colors.length === 4 && colors.every(function(c, i) { return c === expected[i]; });
+        return { passed: pass, expected: expected.join(', '), actual: colors ? colors.join(', ') : null };
+      });
+
+      // ==========================================
+      // 3. الكهرباء: القوانين والحاسبات
+      // ==========================================
+      setCategory('3. الكهرباء والقوانين والحاسبات (Electricity & Formulas)');
+
+      test('توالي 100 Ω + 220 Ω = 320 Ω', function() {
+        var r = REF.convert.resistorsSeries([100, 220]);
+        return { passed: r === 320, expected: 320, actual: r };
+      });
+
+      test('توازي 100 Ω || 100 Ω = 50 Ω', function() {
+        var r = REF.convert.resistorsParallel([100, 100]);
+        return { passed: r === 50, expected: 50, actual: r };
+      });
+
+      test('توازي 1 kΩ || 2.2 kΩ ≈ 687.5 Ω', function() {
+        var r = REF.convert.resistorsParallel([1000, 2200]);
+        return { passed: approxEq(r, 687.5, 1e-4), expected: '687.5 Ω', actual: r + ' Ω' };
+      });
+
+      test('قانون أوم: V=12 V, R=470 Ω → I ≈ 25.53 mA, P ≈ 306.4 mW', function() {
+        var r = REF.convert.ohmsLaw({ V: 12, R: 470 });
+        var passI = r && approxEq(r.I, 0.025531915, 1e-3);
+        var passP = r && approxEq(r.P, 0.30638298, 1e-3);
+        return {
+          passed: passI && passP,
+          expected: 'I ≈ 25.53 mA, P ≈ 306.4 mW',
+          actual: r ? 'I = ' + (r.I * 1000).toFixed(2) + ' mA, P = ' + (r.P * 1000).toFixed(1) + ' mW' : null
+        };
+      });
+
+      test('مقسم الجهد: Vin=9 V, R₁=10 kΩ, R₂=5.1 kΩ → V_out ≈ 3.040 V', function() {
+        var vOut = REF.convert.voltageDivider(9, 10000, 5100);
+        return { passed: approxEq(vOut, 3.039735, 1e-3), expected: '≈ 3.040 V', actual: vOut.toFixed(3) + ' V' };
+      });
+
+      test('حاسبة مقاومة LED: Vs=5 V, Vf=2 V, If=20 mA → 150 Ω', function() {
+        var r = REF.convert.ledResistor(5, 2, 0.02);
+        return { passed: r === 150, expected: '150 Ω', actual: r + ' Ω' };
+      });
+
+      test('ثابت الزمن τ لـ R=10 kΩ, C=100 µF = 1 s', function() {
+        var tau = REF.convert.timeConstantRC(10000, 100e-6);
+        return { passed: approxEq(tau, 1), expected: '1 s', actual: tau + ' s' };
+      });
+
+      test('تردد القطع fc لـ R=1 kΩ, C=159 nF ≈ 1.0 kHz', function() {
+        var fc = REF.convert.cutoffRC(1000, 159e-9);
+        return { passed: approxEq(fc, 1000.97, 1e-2), expected: '≈ 1.0 kHz (1000.97 Hz)', actual: fc.toFixed(1) + ' Hz' };
+      });
+
+      test('تردد الرنين f₀ لـ L=10 mH, C=100 nF ≈ 5.033 kHz', function() {
+        var f0 = REF.convert.resonantFreq(10e-3, 100e-9);
+        return { passed: approxEq(f0, 5032.92, 1e-2), expected: '≈ 5.033 kHz', actual: (f0 / 1000).toFixed(3) + ' kHz' };
+      });
+
+      test('Vrms لـ Vp = 325 V ≈ 229.8 V', function() {
+        var v = REF.convert.vrms(325);
+        return { passed: approxEq(v, 229.8097, 1e-3), expected: '≈ 229.8 V', actual: v.toFixed(1) + ' V' };
+      });
+
+      // ==========================================
+      // 4. البوابات المنطقية وقوانين دي مورجان
+      // ==========================================
+      setCategory('4. البوابات المنطقية (Logic Gates & De Morgan)');
+
+      var gatesTable = [
+        // A, B, AND, OR, NAND, NOR, XOR, XNOR
+        [0, 0, 0, 0, 1, 1, 0, 1],
+        [0, 1, 0, 1, 1, 0, 1, 0],
+        [1, 0, 0, 1, 1, 0, 1, 0],
+        [1, 1, 1, 1, 0, 0, 0, 1]
+      ];
+
+      test('جدول صدق البوابات المنطقية بالكامل (AND, OR, NAND, NOR, XOR, XNOR)', function() {
+        var G = REF.convert.gates;
+        var allPassed = true;
+        var errors = [];
+        for (var i = 0; i < gatesTable.length; i++) {
+          var row = gatesTable[i];
+          var a = row[0], b = row[1];
+          if (G.AND(a, b) !== row[2]) { allPassed = false; errors.push('AND(' + a + ',' + b + ')'); }
+          if (G.OR(a, b) !== row[3]) { allPassed = false; errors.push('OR(' + a + ',' + b + ')'); }
+          if (G.NAND(a, b) !== row[4]) { allPassed = false; errors.push('NAND(' + a + ',' + b + ')'); }
+          if (G.NOR(a, b) !== row[5]) { allPassed = false; errors.push('NOR(' + a + ',' + b + ')'); }
+          if (G.XOR(a, b) !== row[6]) { allPassed = false; errors.push('XOR(' + a + ',' + b + ')'); }
+          if (G.XNOR(a, b) !== row[7]) { allPassed = false; errors.push('XNOR(' + a + ',' + b + ')'); }
+        }
+        return {
+          passed: allPassed,
+          expected: 'All 24 logic outputs correct',
+          actual: allPassed ? 'All 24 match truth table' : 'Errors in: ' + errors.join(', ')
+        };
+      });
+
+      test('التحقق من نظريتي دي مورجان (De Morgan Laws) على جميع المدخلات', function() {
+        var G = REF.convert.gates;
+        var allPassed = true;
+        for (var i = 0; i < gatesTable.length; i++) {
+          var a = gatesTable[i][0];
+          var b = gatesTable[i][1];
+          // Law 1: !(A & B) == !A | !B
+          if (G.NAND(a, b) !== G.OR(G.NOT(a), G.NOT(b))) allPassed = false;
+          // Law 2: !(A | B) == !A & !B
+          if (G.NOR(a, b) !== G.AND(G.NOT(a), G.NOT(b))) allPassed = false;
+        }
+        return {
+          passed: allPassed,
+          expected: 'De Morgan identities hold for all combinations',
+          actual: allPassed ? 'Identity verified' : 'Failed identity'
+        };
+      });
+
+      // ==========================================
+      // 5. تحليل المدخلات وتنسيق الأرقام
+      // ==========================================
+      setCategory('5. تحليل وتنسيق المدخلات (Input Parsing & Formatting)');
+
+      test('تحليل اختصارات الأرقام: 4.7k, 10u, 2.2M, 1e-6', function() {
+        var v1 = REF.format.parseInput('4.7k');
+        var v2 = REF.format.parseInput('10u');
+        var v3 = REF.format.parseInput('2.2M');
+        var v4 = REF.format.parseInput('1e-6');
+        var pass = (v1 === 4700) && (approxEq(v2, 1e-5)) && (v3 === 2200000) && (v4 === 1e-6);
+        return {
+          passed: pass,
+          expected: '4700, 1e-5, 2200000, 1e-6',
+          actual: v1 + ', ' + v2 + ', ' + v3 + ', ' + v4
+        };
+      });
+
+      test('التحويل إلى الصيغة الهندسية: 4700 Ω → "4.7 kΩ"', function() {
+        var str = REF.format.toEngineering(4700, 'Ω');
+        return { passed: str === '4.7 kΩ', expected: '4.7 kΩ', actual: str };
+      });
+
+      // ==========================================
+      // Render Results Table
+      // ==========================================
+      var passedCount = 0;
+      var failedCount = 0;
+
+      var currentCat = null;
+      var html = '';
+
+      for (var i = 0; i < tests.length; i++) {
+        var t = tests[i];
+        if (t.category !== currentCat) {
+          if (currentCat !== null) html += '</tbody></table>';
+          currentCat = t.category;
+          html += '<h2 class="section-title">' + currentCat + '</h2>';
+          html += '<table><thead><tr>' +
+            '<th style="width: 5%;">#</th>' +
+            '<th style="width: 45%;">حالة الاختبار</th>' +
+            '<th style="width: 20%;">المتوقع</th>' +
+            '<th style="width: 20%;">الفعلي</th>' +
+            '<th style="width: 10%;">النتيجة</th>' +
+            '</tr></thead><tbody>';
+        }
+
+        if (t.passed) passedCount++; else failedCount++;
+
+        html += '<tr>' +
+          '<td>' + (i + 1) + '</td>' +
+          '<td>' + t.name + '</td>' +
+          '<td class="ltr">' + t.expected + '</td>' +
+          '<td class="ltr">' + t.actual + '</td>' +
+          '<td><span class="status-badge ' + (t.passed ? 'status-pass' : 'status-fail') + '">' +
+            (t.passed ? 'نجح' : 'فشل') + '</span></td>' +
+          '</tr>';
+      }
+      if (currentCat !== null) html += '</tbody></table>';
+
+      document.getElementById('test-results').innerHTML = html;
+
+      var total = tests.length;
+      var topSummaryEl = document.getElementById('top-summary');
+      var bottomSummaryEl = document.getElementById('bottom-summary');
+
+      var statusClass = failedCount === 0 ? 'badge-pass' : 'badge-fail';
+      var summaryMsg = passedCount + ' من ' + total + ' نجح';
+      if (failedCount > 0) {
+        summaryMsg += ' (' + failedCount + ' فشل)';
+      }
+
+      topSummaryEl.innerHTML = '<div class="summary-text">ملخص النتائج: ' + summaryMsg + '</div>' +
+        '<div class="summary-badge ' + statusClass + '">' + (failedCount === 0 ? 'نجحت جميع الاختبارات' : 'يوجد اختبارات فاشلة') + '</div>';
+
+      bottomSummaryEl.innerHTML = '<div class="summary-badge ' + statusClass + '" style="font-size: 1.2rem; padding: 8px 24px;">' +
+        summaryMsg + '</div>';
+    })();
+  </script>
+</body>
+</html>
